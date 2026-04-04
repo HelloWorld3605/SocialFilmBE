@@ -12,7 +12,7 @@ import java.time.Instant;
 @Setter
 @Entity
 @Table(name = "watch_history", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_history_user_slug", columnNames = {"user_id", "movie_slug"})
+        @UniqueConstraint(name = "uk_history_user_slug_episode", columnNames = {"user_id", "movie_slug", "last_episode_index"})
 })
 public class WatchHistory {
 
@@ -53,6 +53,15 @@ public class WatchHistory {
 
     @Column(name = "last_position_seconds")
     private Integer lastPositionSeconds;
+
+    @Column(name = "last_server_index")
+    private Integer lastServerIndex;
+
+    @Column(name = "last_episode_index")
+    private Integer lastEpisodeIndex;
+
+    @Column(name = "duration_seconds")
+    private Integer durationSeconds;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)

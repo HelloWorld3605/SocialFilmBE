@@ -158,6 +158,7 @@ public class PhimApiService {
         }
 
         JsonNode dataNode = raw.has("data") ? raw.path("data") : raw;
+        JsonNode paginationNode = navigate(dataNode, "params.pagination");
         JsonNode itemsNode = dataNode.path("items");
         if (!itemsNode.isArray()) {
             itemsNode = dataNode.path(fallbackField);
@@ -171,9 +172,21 @@ public class PhimApiService {
             items.add(toMovieSummary(item));
         }
 
-        Integer page = readInt(dataNode, "currentPage", readInt(raw, "currentPage", readInt(raw, "page", 1)));
-        Integer totalPages = readInt(dataNode, "totalPages", readInt(raw, "totalPages", 1));
-        Integer totalItems = readInt(dataNode, "totalItems", items.size());
+        Integer page = readInt(
+                paginationNode,
+                "currentPage",
+                readInt(dataNode, "currentPage", readInt(raw, "currentPage", readInt(raw, "page", 1)))
+        );
+        Integer totalPages = readInt(
+                paginationNode,
+                "totalPages",
+                readInt(dataNode, "totalPages", readInt(raw, "totalPages", 1))
+        );
+        Integer totalItems = readInt(
+                paginationNode,
+                "totalItems",
+                readInt(dataNode, "totalItems", items.size())
+        );
 
         return new CatalogDtos.PagedMovieResponse(page, totalPages, totalItems, items, raw);
     }

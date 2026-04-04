@@ -32,7 +32,10 @@ public final class LibraryDtos {
             @Size(max = 100) String lang,
             @Size(max = 100) String year,
             @Size(max = 255) String lastEpisodeName,
-            Integer lastPositionSeconds
+            Integer lastPositionSeconds,
+            Integer lastServerIndex,
+            Integer lastEpisodeIndex,
+            Integer durationSeconds
     ) {
     }
 
@@ -62,6 +65,9 @@ public final class LibraryDtos {
             String year,
             String lastEpisodeName,
             Integer lastPositionSeconds,
+            Integer lastServerIndex,
+            Integer lastEpisodeIndex,
+            Integer durationSeconds,
             Instant updatedAt
     ) {
     }
@@ -72,4 +78,3 @@ public final class LibraryDtos {
     ) {
     }
 }
-
