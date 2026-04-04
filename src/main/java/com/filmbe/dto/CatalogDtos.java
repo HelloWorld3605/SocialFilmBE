@@ -1,0 +1,53 @@
+package com.filmbe.dto;
+
+import java.util.List;
+import java.util.Map;
+import tools.jackson.databind.JsonNode;
+
+public final class CatalogDtos {
+    private CatalogDtos() {
+    }
+
+    public record MovieSummary(
+            String slug,
+            String name,
+            String originName,
+            String posterUrl,
+            String thumbUrl,
+            String quality,
+            String lang,
+            String episodeCurrent,
+            Integer year,
+            String type,
+            List<String> categories,
+            List<String> countries,
+            Integer tmdbId
+    ) {
+    }
+
+    public record PagedMovieResponse(
+            Integer page,
+            Integer totalPages,
+            Integer totalItems,
+            List<MovieSummary> items,
+            JsonNode raw
+    ) {
+    }
+
+    public record HomeResponse(
+            List<MovieSummary> latest,
+            List<MovieSummary> series,
+            List<MovieSummary> single,
+            List<MovieSummary> animation,
+            List<MovieSummary> tvShows
+    ) {
+    }
+
+    public record MovieDetailResponse(
+            MovieSummary movie,
+            JsonNode raw,
+            JsonNode episodes,
+            Map<String, Object> metadata
+    ) {
+    }
+}
