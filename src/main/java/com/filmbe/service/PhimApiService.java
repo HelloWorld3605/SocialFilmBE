@@ -23,7 +23,6 @@ import tools.jackson.databind.node.JsonNodeFactory;
 @Slf4j
 @RequiredArgsConstructor
 public class PhimApiService {
-
     private final AppProperties appProperties;
 
     private RestClient restClient() {
@@ -299,4 +298,5 @@ public class PhimApiService {
             }
         };
     }
+
 }

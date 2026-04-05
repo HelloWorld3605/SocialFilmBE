@@ -42,6 +42,15 @@ public class WatchHistoryService {
         return toResponse(watchHistoryRepository.save(history));
     }
 
+    @Transactional
+    public void remove(String email, Long historyId) {
+        User user = requireUser(email);
+        long deleted = watchHistoryRepository.deleteByIdAndUserId(historyId, user.getId());
+        if (deleted == 0) {
+            throw new EntityNotFoundException("Không tìm thấy mục lịch sử xem.");
+        }
+    }
+
     private Optional<WatchHistory> resolveHistory(Long userId, LibraryDtos.SaveHistoryRequest request) {
         if (request.lastEpisodeIndex() != null) {
             Optional<WatchHistory> history = watchHistoryRepository.findByUserIdAndMovieSlugAndLastEpisodeIndex(

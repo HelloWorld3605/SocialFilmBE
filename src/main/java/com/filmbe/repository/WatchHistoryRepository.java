@@ -14,4 +14,6 @@ public interface WatchHistoryRepository extends JpaRepository<WatchHistory, Long
     Optional<WatchHistory> findByUserIdAndMovieSlugAndLastEpisodeName(Long userId, String movieSlug, String lastEpisodeName);
 
     Optional<WatchHistory> findTopByUserIdAndMovieSlugOrderByUpdatedAtDesc(Long userId, String movieSlug);
+
+    long deleteByIdAndUserId(Long id, Long userId);
 }
