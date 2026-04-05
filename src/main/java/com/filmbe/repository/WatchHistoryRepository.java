@@ -9,6 +9,8 @@ import java.util.Optional;
 public interface WatchHistoryRepository extends JpaRepository<WatchHistory, Long> {
     List<WatchHistory> findAllByUserIdOrderByUpdatedAtDesc(Long userId);
 
+    Optional<WatchHistory> findByIdAndUserId(Long id, Long userId);
+
     Optional<WatchHistory> findByUserIdAndMovieSlugAndLastEpisodeIndex(Long userId, String movieSlug, Integer lastEpisodeIndex);
 
     Optional<WatchHistory> findByUserIdAndMovieSlugAndLastEpisodeName(Long userId, String movieSlug, String lastEpisodeName);

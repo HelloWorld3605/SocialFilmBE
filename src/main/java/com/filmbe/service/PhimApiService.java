@@ -1,9 +1,11 @@
 package com.filmbe.service;
 
 import com.filmbe.config.AppProperties;
+import com.filmbe.config.RedisCacheConfig;
 import com.filmbe.dto.CatalogDtos;
 import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
@@ -32,6 +34,7 @@ public class PhimApiService {
                 .build();
     }
 
+    @Cacheable(cacheNames = RedisCacheConfig.CATALOG_HOME_CACHE, sync = true)
     public CatalogDtos.HomeResponse home() {
         return new CatalogDtos.HomeResponse(
                 safeHomeSection("latest", () -> latest(1, "v3").items()),
@@ -42,6 +45,11 @@ public class PhimApiService {
         );
     }
 
+    @Cacheable(
+            cacheNames = RedisCacheConfig.CATALOG_LATEST_CACHE,
+            key = "T(com.filmbe.config.CacheKeys).parts(#page, #version)",
+            sync = true
+    )
     public CatalogDtos.PagedMovieResponse latest(int page, String version) {
         String endpoint = switch (version == null ? "" : version.toLowerCase()) {
             case "v2" -> "/danh-sach/phim-moi-cap-nhat-v2";
@@ -53,39 +61,67 @@ public class PhimApiService {
         return normalizePaged(raw, "items");
     }
 
+    @Cacheable(
+            cacheNames = RedisCacheConfig.CATALOG_LIST_CACHE,
+            key = "T(com.filmbe.config.CacheKeys).parts(#type, #params)",
+            sync = true
+    )
     public CatalogDtos.PagedMovieResponse list(String type, Map<String, String> params) {
         JsonNode raw = get("/v1/api/danh-sach/" + type, params);
         return normalizePaged(raw, "items");
     }
 
+    @Cacheable(
+            cacheNames = RedisCacheConfig.CATALOG_SEARCH_CACHE,
+            key = "T(com.filmbe.config.CacheKeys).parts(#params)",
+            sync = true
+    )
     public CatalogDtos.PagedMovieResponse search(Map<String, String> params) {
         JsonNode raw = get("/v1/api/tim-kiem", params);
         return normalizePaged(raw, "items");
     }
 
+    @Cacheable(cacheNames = RedisCacheConfig.CATALOG_TAXONOMY_CACHE, key = "'categories'", sync = true)
     public JsonNode categories() {
         return get("/the-loai", Map.of());
     }
 
+    @Cacheable(cacheNames = RedisCacheConfig.CATALOG_TAXONOMY_CACHE, key = "'countries'", sync = true)
     public JsonNode countries() {
         return get("/quoc-gia", Map.of());
     }
 
+    @Cacheable(
+            cacheNames = RedisCacheConfig.CATALOG_CATEGORY_CACHE,
+            key = "T(com.filmbe.config.CacheKeys).parts(#slug, #params)",
+            sync = true
+    )
     public CatalogDtos.PagedMovieResponse categoryDetail(String slug, Map<String, String> params) {
         JsonNode raw = get("/v1/api/the-loai/" + slug, params);
         return normalizePaged(raw, "items");
     }
 
+    @Cacheable(
+            cacheNames = RedisCacheConfig.CATALOG_COUNTRY_CACHE,
+            key = "T(com.filmbe.config.CacheKeys).parts(#slug, #params)",
+            sync = true
+    )
     public CatalogDtos.PagedMovieResponse countryDetail(String slug, Map<String, String> params) {
         JsonNode raw = get("/v1/api/quoc-gia/" + slug, params);
         return normalizePaged(raw, "items");
     }
 
+    @Cacheable(
+            cacheNames = RedisCacheConfig.CATALOG_YEAR_CACHE,
+            key = "T(com.filmbe.config.CacheKeys).parts(#year, #params)",
+            sync = true
+    )
     public CatalogDtos.PagedMovieResponse yearDetail(String year, Map<String, String> params) {
         JsonNode raw = get("/v1/api/nam/" + year, params);
         return normalizePaged(raw, "items");
     }
 
+    @Cacheable(cacheNames = RedisCacheConfig.MOVIE_DETAIL_CACHE, key = "#slug", sync = true)
     public CatalogDtos.MovieDetailResponse movie(String slug) {
         JsonNode raw = get("/phim/" + slug, Map.of());
         JsonNode item = raw.path("movie");
@@ -97,6 +133,11 @@ public class PhimApiService {
         return new CatalogDtos.MovieDetailResponse(toMovieSummary(item), raw, episodes, metadata);
     }
 
+    @Cacheable(
+            cacheNames = RedisCacheConfig.TMDB_CACHE,
+            key = "T(com.filmbe.config.CacheKeys).parts(#type, #id)",
+            sync = true
+    )
     public JsonNode tmdb(String type, String id) {
         return get("/tmdb/" + type + "/" + id, Map.of());
     }

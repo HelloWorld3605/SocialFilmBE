@@ -1,5 +1,6 @@
 package com.filmbe.model;
 
+import com.filmbe.enums.Role;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

@@ -2,7 +2,7 @@ package com.filmbe.service;
 
 import com.filmbe.dto.AuthDtos;
 import com.filmbe.model.PendingRegistration;
-import com.filmbe.model.Role;
+import com.filmbe.enums.Role;
 import com.filmbe.model.User;
 import com.filmbe.repository.PendingRegistrationRepository;
 import com.filmbe.repository.UserRepository;

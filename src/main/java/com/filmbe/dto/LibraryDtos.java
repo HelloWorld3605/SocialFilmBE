@@ -35,8 +35,18 @@ public final class LibraryDtos {
             Integer lastPositionSeconds,
             Integer lastServerIndex,
             Integer lastEpisodeIndex,
-            Integer durationSeconds
+            Integer durationSeconds,
+            SaveHistoryReason saveReason
     ) {
+    }
+
+    public enum SaveHistoryReason {
+        EMBED_OPEN,
+        PERIODIC,
+        PAUSE,
+        ENDED,
+        BACKGROUND,
+        EXIT
     }
 
     public record LibraryMovieResponse(

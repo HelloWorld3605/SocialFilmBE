@@ -1,4 +1,4 @@
-package com.filmbe.model;
+package com.filmbe.enums;
 
 public enum Role {
     USER,
