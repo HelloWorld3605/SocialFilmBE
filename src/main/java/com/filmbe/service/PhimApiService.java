@@ -6,10 +6,12 @@ import com.filmbe.config.RedisCacheConfig;
 import com.filmbe.dto.CatalogDtos;
 import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -26,6 +28,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.time.Duration;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.JsonNodeFactory;
 
@@ -40,10 +43,12 @@ public class PhimApiService {
             "hoat-hinh"
     );
     private static final int MAX_AGGREGATE_SOURCE_PAGE_SIZE = 64;
+    private static final RedisSerializer<String> STRING_SERIALIZER = RedisSerializer.string();
 
     private final AppProperties appProperties;
     private final CacheManager cacheManager;
     private final ObjectMapper objectMapper;
+    private final RedisConnectionFactory redisConnectionFactory;
 
     private RestClient restClient() {
         return RestClient.builder()
@@ -289,23 +294,13 @@ public class PhimApiService {
     }
 
     private JsonNode getCachedJsonDocument(String cacheName, String key, SupplierWithException<JsonNode> loader) {
-        Cache cache = cacheManager.getCache(cacheName);
-        if (cache == null) {
-            return loadJsonDocument(loader);
-        }
-
-        String cachedPayload = readCachedJsonPayload(cache, key);
-        if (cachedPayload != null) {
-            try {
-                return objectMapper.readTree(cachedPayload);
-            } catch (JacksonException exception) {
-                log.warn("Redis cache payload was not valid JSON for cache={} key={}", cacheName, key, exception);
-                evictCacheEntry(cache, key, "invalid JSON payload");
-            }
+        JsonNode cachedDocument = readCachedJsonDocument(cacheName, key);
+        if (cachedDocument != null) {
+            return cachedDocument;
         }
 
         JsonNode fresh = loadJsonDocument(loader);
-        cacheJsonPayload(cache, key, fresh);
+        cacheJsonDocument(cacheName, key, fresh);
         return fresh;
     }
 
@@ -319,32 +314,112 @@ public class PhimApiService {
         }
     }
 
-    private String readCachedJsonPayload(Cache cache, String key) {
+    private JsonNode readCachedJsonDocument(String cacheName, String key) {
         try {
-            return cache.get(key, String.class);
+            String cachedPayload = readRawCacheValue(cacheName, key);
+            if (cachedPayload == null || cachedPayload.isBlank()) {
+                return null;
+            }
+
+            return decodeCachedJsonDocument(cachedPayload);
+        } catch (JacksonException exception) {
+            log.warn("Redis raw cache payload was not valid JSON for cache={} key={}", cacheName, key, exception);
+            evictRawCacheEntry(cacheName, key, "invalid JSON payload");
+            return null;
         } catch (RuntimeException exception) {
-            log.warn("Redis cache GET failed for cache={} key={}", cache.getName(), key, exception);
-            evictCacheEntry(cache, key, "unreadable payload");
+            log.warn("Redis raw cache GET failed for cache={} key={}", cacheName, key, exception);
             return null;
         }
     }
 
-    private void cacheJsonPayload(Cache cache, String key, JsonNode value) {
+    private JsonNode decodeCachedJsonDocument(String cachedPayload) throws JacksonException {
+        JsonNode root = objectMapper.readTree(cachedPayload);
+
+        if (root == null || root.isNull()) {
+            return null;
+        }
+
+        if (root.isTextual()) {
+            return objectMapper.readTree(root.asText());
+        }
+
+        if (root.isArray()
+                && root.size() == 2
+                && root.get(0).isTextual()
+                && root.get(1).isTextual()) {
+            return objectMapper.readTree(root.get(1).asText());
+        }
+
+        if (root.isObject() && root.path("value").isTextual()) {
+            return objectMapper.readTree(root.path("value").asText());
+        }
+
+        return root;
+    }
+
+    private String readRawCacheValue(String cacheName, String key) {
+        byte[] redisKey = serializeRedisKey(cacheName, key);
+        RedisConnection connection = redisConnectionFactory.getConnection();
         try {
-            cache.put(key, objectMapper.writeValueAsString(value));
-        } catch (JacksonException exception) {
-            log.warn("Redis cache PUT failed while encoding JSON for cache={} key={}", cache.getName(), key, exception);
-        } catch (RuntimeException exception) {
-            log.warn("Redis cache PUT failed for cache={} key={}", cache.getName(), key, exception);
+            byte[] payload = connection.stringCommands().get(redisKey);
+            return payload == null ? null : STRING_SERIALIZER.deserialize(payload);
+        } finally {
+            connection.close();
         }
     }
 
-    private void evictCacheEntry(Cache cache, String key, String reason) {
+    private void cacheJsonDocument(String cacheName, String key, JsonNode value) {
         try {
-            cache.evict(key);
+            writeRawCacheValue(cacheName, key, objectMapper.writeValueAsString(value));
+        } catch (JacksonException exception) {
+            log.warn("Redis raw cache PUT failed while encoding JSON for cache={} key={}", cacheName, key, exception);
         } catch (RuntimeException exception) {
-            log.warn("Redis cache EVICT failed for cache={} key={} after {}", cache.getName(), key, reason, exception);
+            log.warn("Redis raw cache PUT failed for cache={} key={}", cacheName, key, exception);
         }
+    }
+
+    private void writeRawCacheValue(String cacheName, String key, String payload) {
+        byte[] redisKey = serializeRedisKey(cacheName, key);
+        byte[] redisValue = STRING_SERIALIZER.serialize(payload);
+        RedisConnection connection = redisConnectionFactory.getConnection();
+        try {
+            connection.stringCommands().set(redisKey, redisValue);
+            Duration ttl = resolveDocumentCacheTtl(cacheName);
+            if (!ttl.isZero() && !ttl.isNegative()) {
+                connection.keyCommands().expire(redisKey, ttl.getSeconds());
+            }
+        } finally {
+            connection.close();
+        }
+    }
+
+    private void evictRawCacheEntry(String cacheName, String key, String reason) {
+        byte[] redisKey = serializeRedisKey(cacheName, key);
+        RedisConnection connection = redisConnectionFactory.getConnection();
+        try {
+            connection.keyCommands().del(redisKey);
+        } catch (RuntimeException exception) {
+            log.warn("Redis raw cache EVICT failed for cache={} key={} after {}", cacheName, key, reason, exception);
+        } finally {
+            connection.close();
+        }
+    }
+
+    private byte[] serializeRedisKey(String cacheName, String key) {
+        String fullKey = appProperties.cache().redis().keyPrefix()
+                + RedisCacheConfig.PUBLIC_CACHE_PREFIX_VERSION
+                + cacheName
+                + "::"
+                + key;
+        return STRING_SERIALIZER.serialize(fullKey);
+    }
+
+    private Duration resolveDocumentCacheTtl(String cacheName) {
+        return switch (cacheName) {
+            case RedisCacheConfig.CATALOG_TAXONOMY_CACHE -> appProperties.cache().redis().taxonomyTtl();
+            case RedisCacheConfig.TMDB_CACHE -> appProperties.cache().redis().tmdbTtl();
+            default -> appProperties.cache().redis().defaultTtl();
+        };
     }
 
     private CatalogDtos.PagedMovieResponse normalizePaged(JsonNode raw, String fallbackField) {

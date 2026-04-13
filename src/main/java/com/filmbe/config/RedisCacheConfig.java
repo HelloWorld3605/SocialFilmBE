@@ -30,7 +30,7 @@ public class RedisCacheConfig implements CachingConfigurer {
     public static final String CATALOG_YEAR_CACHE = "catalogYear";
     public static final String MOVIE_DETAIL_CACHE = "movieDetail";
     public static final String TMDB_CACHE = "tmdb";
-    private static final String PUBLIC_CACHE_PREFIX_VERSION = "cache-v2:";
+    public static final String PUBLIC_CACHE_PREFIX_VERSION = "cache-v2:";
 
     @Bean
     CacheManager cacheManager(RedisConnectionFactory connectionFactory, AppProperties appProperties) {
