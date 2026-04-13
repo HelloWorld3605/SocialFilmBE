@@ -43,6 +43,7 @@ public class SecurityConfig {
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/validate-token/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/catalog/**", "/api/movies/**", "/api/tmdb/**").permitAll()
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated()
                 )
