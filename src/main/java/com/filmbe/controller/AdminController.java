@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -44,6 +45,15 @@ public class AdminController {
         return adminService.getUser(userId);
     }
 
+    @GetMapping("/pending-registrations")
+    public AdminDtos.PendingRegistrationListResponse pendingRegistrations(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "12") int size,
+            @RequestParam(required = false) String query
+    ) {
+        return adminService.listPendingRegistrations(page, size, query);
+    }
+
     @PutMapping("/users/{userId}")
     public AdminDtos.UserDetailResponse updateUser(
             Authentication authentication,
@@ -51,5 +61,17 @@ public class AdminController {
             @Valid @RequestBody AdminDtos.UpdateUserRequest request
     ) {
         return adminService.updateUser(authentication.getName(), userId, request);
+    }
+
+    @DeleteMapping("/pending-registrations/{pendingRegistrationId}")
+    public AdminDtos.ActionResponse resetPendingRegistration(@PathVariable Long pendingRegistrationId) {
+        return adminService.resetPendingRegistration(pendingRegistrationId);
+    }
+
+    @DeleteMapping("/pending-registrations")
+    public AdminDtos.ActionResponse resetPendingRegistrationByEmail(
+            @Valid @RequestBody AdminDtos.ResetPendingRegistrationRequest request
+    ) {
+        return adminService.resetPendingRegistrationByEmail(request.email());
     }
 }

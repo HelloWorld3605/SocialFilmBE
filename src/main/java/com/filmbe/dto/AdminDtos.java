@@ -1,6 +1,7 @@
 package com.filmbe.dto;
 
 import com.filmbe.enums.Role;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -18,6 +19,7 @@ public final class AdminDtos {
             long verifiedUsers,
             long newUsersLast7Days,
             long activeUsersLast7Days,
+            long pendingRegistrations,
             long totalWatchHistoryEntries,
             long watchHistoryLast7Days,
             long totalWishlistItems,
@@ -85,12 +87,39 @@ public final class AdminDtos {
     ) {
     }
 
+    public record PendingRegistrationSummary(
+            Long id,
+            String email,
+            Instant createdAt,
+            Instant expiresAt,
+            boolean expired
+    ) {
+    }
+
     public record OverviewResponse(
             DashboardStats stats,
             List<UserSummary> latestUsers,
             List<ActivityItem> recentActivity,
             List<MovieMetric> topWatchedMovies,
-            List<MovieMetric> topWishlistedMovies
+            List<MovieMetric> topWishlistedMovies,
+            List<PendingRegistrationSummary> pendingRegistrations
+    ) {
+    }
+
+    public record PendingRegistrationListResponse(
+            int page,
+            int size,
+            int totalPages,
+            long totalItems,
+            List<PendingRegistrationSummary> items
+    ) {
+    }
+
+    public record ActionResponse(String message) {
+    }
+
+    public record ResetPendingRegistrationRequest(
+            @NotBlank @Email @Size(max = 160) String email
     ) {
     }
 

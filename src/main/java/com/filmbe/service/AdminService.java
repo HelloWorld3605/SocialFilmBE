@@ -2,10 +2,12 @@ package com.filmbe.service;
 
 import com.filmbe.dto.AdminDtos;
 import com.filmbe.enums.Role;
+import com.filmbe.model.PendingRegistration;
 import com.filmbe.model.User;
 import com.filmbe.model.WatchHistory;
 import com.filmbe.model.WishlistItem;
 import com.filmbe.repository.FileResourceRepository;
+import com.filmbe.repository.PendingRegistrationRepository;
 import com.filmbe.repository.UserRepository;
 import com.filmbe.repository.WatchHistoryRepository;
 import com.filmbe.repository.WishlistItemRepository;
@@ -32,11 +34,13 @@ public class AdminService {
     private static final int RECENT_ACTIVITY_LIMIT = 10;
     private static final int LATEST_USERS_LIMIT = 6;
     private static final int TOP_MOVIES_LIMIT = 5;
+    private static final int PENDING_REGISTRATION_LIMIT = 8;
 
     private final UserRepository userRepository;
     private final WatchHistoryRepository watchHistoryRepository;
     private final WishlistItemRepository wishlistItemRepository;
     private final FileResourceRepository fileResourceRepository;
+    private final PendingRegistrationRepository pendingRegistrationRepository;
 
     @Transactional(readOnly = true)
     public AdminDtos.OverviewResponse overview() {
@@ -54,6 +58,7 @@ public class AdminService {
                 userRepository.countByEmailVerifiedTrue(),
                 userRepository.countByCreatedAtAfter(sevenDaysAgo),
                 watchHistoryRepository.countDistinctActiveUsersByUpdatedAtAfter(sevenDaysAgo),
+                pendingRegistrationRepository.countByExpiresAtAfter(now),
                 watchHistoryRepository.count(),
                 watchHistoryRepository.countByCreatedAtAfter(sevenDaysAgo),
                 wishlistItemRepository.count(),
@@ -83,6 +88,13 @@ public class AdminService {
                                 item.getThumbUrl(),
                                 item.getTotal()
                         ))
+                        .toList(),
+                pendingRegistrationRepository.findAllByOrderByCreatedAtDesc(
+                                PageRequest.of(0, PENDING_REGISTRATION_LIMIT)
+                        )
+                        .getContent()
+                        .stream()
+                        .map(this::toPendingRegistrationSummary)
                         .toList()
         );
     }
@@ -174,6 +186,65 @@ public class AdminService {
         user.setBio(blankToNull(request.bio()));
 
         return getUser(user.getId());
+    }
+
+    @Transactional(readOnly = true)
+    public AdminDtos.PendingRegistrationListResponse listPendingRegistrations(
+            int page,
+            int size,
+            String query
+    ) {
+        int normalizedPage = Math.max(page, 0);
+        int normalizedSize = Math.min(Math.max(size, 1), 50);
+
+        var pageRequest = PageRequest.of(
+                normalizedPage,
+                normalizedSize,
+                Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id"))
+        );
+
+        var result = query == null || query.isBlank()
+                ? pendingRegistrationRepository.findAllByOrderByCreatedAtDesc(pageRequest)
+                : pendingRegistrationRepository.findAllByEmailContainingIgnoreCaseOrderByCreatedAtDesc(
+                        query.trim(),
+                        pageRequest
+                );
+
+        return new AdminDtos.PendingRegistrationListResponse(
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalPages(),
+                result.getTotalElements(),
+                result.getContent().stream()
+                        .map(this::toPendingRegistrationSummary)
+                        .toList()
+        );
+    }
+
+    @Transactional
+    public AdminDtos.ActionResponse resetPendingRegistration(Long pendingRegistrationId) {
+        PendingRegistration pendingRegistration = pendingRegistrationRepository.findById(pendingRegistrationId)
+                .orElseThrow(() -> new EntityNotFoundException("Không tìm thấy yêu cầu đăng ký chờ xử lý."));
+
+        String email = pendingRegistration.getEmail();
+        pendingRegistrationRepository.delete(pendingRegistration);
+
+        return new AdminDtos.ActionResponse(
+                "Đã reset trạng thái chờ đăng ký cho " + email + ". Email này có thể đăng ký lại ngay."
+        );
+    }
+
+    @Transactional
+    public AdminDtos.ActionResponse resetPendingRegistrationByEmail(String email) {
+        String normalizedEmail = normalizeEmail(email);
+        PendingRegistration pendingRegistration = pendingRegistrationRepository.findByEmailIgnoreCase(normalizedEmail)
+                .orElseThrow(() -> new EntityNotFoundException("Email này hiện không có trạng thái chờ đăng ký."));
+
+        pendingRegistrationRepository.delete(pendingRegistration);
+
+        return new AdminDtos.ActionResponse(
+                "Đã reset trạng thái chờ đăng ký cho " + normalizedEmail + ". Email này có thể đăng ký lại ngay."
+        );
     }
 
     private List<AdminDtos.UserSummary> toUserSummaries(List<User> users) {
@@ -275,7 +346,22 @@ public class AdminService {
         );
     }
 
+    private AdminDtos.PendingRegistrationSummary toPendingRegistrationSummary(PendingRegistration item) {
+        Instant now = Instant.now();
+        return new AdminDtos.PendingRegistrationSummary(
+                item.getId(),
+                item.getEmail(),
+                item.getCreatedAt(),
+                item.getExpiresAt(),
+                item.getExpiresAt() != null && item.getExpiresAt().isBefore(now)
+        );
+    }
+
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase();
     }
 }
