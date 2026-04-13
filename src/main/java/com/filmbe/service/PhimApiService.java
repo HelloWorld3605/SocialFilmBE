@@ -1,10 +1,13 @@
 package com.filmbe.service;
 
 import com.filmbe.config.AppProperties;
+import com.filmbe.config.CacheKeys;
 import com.filmbe.config.RedisCacheConfig;
 import com.filmbe.dto.CatalogDtos;
 import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -12,12 +15,17 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.JsonNodeFactory;
 
@@ -25,7 +33,17 @@ import tools.jackson.databind.node.JsonNodeFactory;
 @Slf4j
 @RequiredArgsConstructor
 public class PhimApiService {
+    private static final List<String> DEFAULT_BROWSE_TYPES = List.of(
+            "phim-bo",
+            "phim-le",
+            "tv-shows",
+            "hoat-hinh"
+    );
+    private static final int MAX_AGGREGATE_SOURCE_PAGE_SIZE = 64;
+
     private final AppProperties appProperties;
+    private final CacheManager cacheManager;
+    private final ObjectMapper objectMapper;
 
     private RestClient restClient() {
         return RestClient.builder()
@@ -72,6 +90,79 @@ public class PhimApiService {
     }
 
     @Cacheable(
+            cacheNames = RedisCacheConfig.CATALOG_LIST_CACHE,
+            key = "T(com.filmbe.config.CacheKeys).parts('all', #types, #params)",
+            sync = true
+    )
+    public CatalogDtos.PagedMovieResponse listAll(List<String> types, Map<String, String> params) {
+        List<String> normalizedTypes = normalizeBrowseTypes(types);
+        if (normalizedTypes.size() == 1) {
+            return list(normalizedTypes.getFirst(), params);
+        }
+
+        int page = parsePositiveInt(params.get("page"), 1);
+        int limit = Math.min(parsePositiveInt(params.get("limit"), 24), MAX_AGGREGATE_SOURCE_PAGE_SIZE);
+        int targetItemCount = page * limit;
+        int pagesToFetch = Math.max(1, (int) Math.ceil((double) targetItemCount / MAX_AGGREGATE_SOURCE_PAGE_SIZE));
+        String sortField = params.getOrDefault("sort_field", "modified.time");
+        String sortType = params.getOrDefault("sort_type", "desc");
+
+        Map<String, AggregateCandidate> ranked = new LinkedHashMap<>();
+        int totalItems = 0;
+
+        for (int typeIndex = 0; typeIndex < normalizedTypes.size(); typeIndex++) {
+            String type = normalizedTypes.get(typeIndex);
+
+            for (int sourcePage = 1; sourcePage <= pagesToFetch; sourcePage++) {
+                Map<String, String> sourceParams = new LinkedHashMap<>(params);
+                sourceParams.put("page", String.valueOf(sourcePage));
+                sourceParams.put("limit", String.valueOf(MAX_AGGREGATE_SOURCE_PAGE_SIZE));
+
+                CatalogDtos.PagedMovieResponse response = list(type, sourceParams);
+                if (sourcePage == 1) {
+                    totalItems += response.totalItems() == null ? 0 : response.totalItems();
+                }
+
+                List<CatalogDtos.MovieSummary> items = response.items();
+                for (int itemIndex = 0; itemIndex < items.size(); itemIndex++) {
+                    CatalogDtos.MovieSummary item = items.get(itemIndex);
+                    if (item.slug() == null || item.slug().isBlank()) {
+                        continue;
+                    }
+
+                    ranked.putIfAbsent(
+                            item.slug(),
+                            new AggregateCandidate(
+                                    item,
+                                    typeIndex,
+                                    (sourcePage - 1) * MAX_AGGREGATE_SOURCE_PAGE_SIZE + itemIndex
+                            )
+                    );
+                }
+            }
+        }
+
+        List<AggregateCandidate> merged = new ArrayList<>(ranked.values());
+        merged.sort((left, right) -> compareAggregateCandidates(left, right, sortField, sortType));
+
+        int fromIndex = Math.min((page - 1) * limit, merged.size());
+        int toIndex = Math.min(fromIndex + limit, merged.size());
+        List<CatalogDtos.MovieSummary> pageItems = merged.subList(fromIndex, toIndex)
+                .stream()
+                .map(AggregateCandidate::item)
+                .toList();
+        int totalPages = Math.max(1, (int) Math.ceil(totalItems / (double) limit));
+
+        return new CatalogDtos.PagedMovieResponse(
+                page,
+                totalPages,
+                totalItems,
+                pageItems,
+                buildAggregateRaw(page, totalPages, totalItems, normalizedTypes, params)
+        );
+    }
+
+    @Cacheable(
             cacheNames = RedisCacheConfig.CATALOG_SEARCH_CACHE,
             key = "T(com.filmbe.config.CacheKeys).parts(#params)",
             sync = true
@@ -81,14 +172,20 @@ public class PhimApiService {
         return normalizePaged(raw, "items");
     }
 
-    @Cacheable(cacheNames = RedisCacheConfig.CATALOG_TAXONOMY_CACHE, key = "'categories'", sync = true)
     public JsonNode categories() {
-        return get("/the-loai", Map.of());
+        return getCachedJsonDocument(
+                RedisCacheConfig.CATALOG_TAXONOMY_CACHE,
+                "categories",
+                () -> get("/the-loai", Map.of())
+        );
     }
 
-    @Cacheable(cacheNames = RedisCacheConfig.CATALOG_TAXONOMY_CACHE, key = "'countries'", sync = true)
     public JsonNode countries() {
-        return get("/quoc-gia", Map.of());
+        return getCachedJsonDocument(
+                RedisCacheConfig.CATALOG_TAXONOMY_CACHE,
+                "countries",
+                () -> get("/quoc-gia", Map.of())
+        );
     }
 
     @Cacheable(
@@ -133,13 +230,12 @@ public class PhimApiService {
         return new CatalogDtos.MovieDetailResponse(toMovieSummary(item), raw, episodes, metadata);
     }
 
-    @Cacheable(
-            cacheNames = RedisCacheConfig.TMDB_CACHE,
-            key = "T(com.filmbe.config.CacheKeys).parts(#type, #id)",
-            sync = true
-    )
     public JsonNode tmdb(String type, String id) {
-        return get("/tmdb/" + type + "/" + id, Map.of());
+        return getCachedJsonDocument(
+                RedisCacheConfig.TMDB_CACHE,
+                CacheKeys.parts(type, id),
+                () -> get("/tmdb/" + type + "/" + id, Map.of())
+        );
     }
 
     public String imageProxy(String originalUrl) {
@@ -190,6 +286,65 @@ public class PhimApiService {
                 .body(JsonNode.class);
 
         return body == null ? JsonNodeFactory.instance.objectNode() : body;
+    }
+
+    private JsonNode getCachedJsonDocument(String cacheName, String key, SupplierWithException<JsonNode> loader) {
+        Cache cache = cacheManager.getCache(cacheName);
+        if (cache == null) {
+            return loadJsonDocument(loader);
+        }
+
+        String cachedPayload = readCachedJsonPayload(cache, key);
+        if (cachedPayload != null) {
+            try {
+                return objectMapper.readTree(cachedPayload);
+            } catch (JacksonException exception) {
+                log.warn("Redis cache payload was not valid JSON for cache={} key={}", cacheName, key, exception);
+                evictCacheEntry(cache, key, "invalid JSON payload");
+            }
+        }
+
+        JsonNode fresh = loadJsonDocument(loader);
+        cacheJsonPayload(cache, key, fresh);
+        return fresh;
+    }
+
+    private JsonNode loadJsonDocument(SupplierWithException<JsonNode> loader) {
+        try {
+            return loader.get();
+        } catch (RuntimeException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to load JSON document", exception);
+        }
+    }
+
+    private String readCachedJsonPayload(Cache cache, String key) {
+        try {
+            return cache.get(key, String.class);
+        } catch (RuntimeException exception) {
+            log.warn("Redis cache GET failed for cache={} key={}", cache.getName(), key, exception);
+            evictCacheEntry(cache, key, "unreadable payload");
+            return null;
+        }
+    }
+
+    private void cacheJsonPayload(Cache cache, String key, JsonNode value) {
+        try {
+            cache.put(key, objectMapper.writeValueAsString(value));
+        } catch (JacksonException exception) {
+            log.warn("Redis cache PUT failed while encoding JSON for cache={} key={}", cache.getName(), key, exception);
+        } catch (RuntimeException exception) {
+            log.warn("Redis cache PUT failed for cache={} key={}", cache.getName(), key, exception);
+        }
+    }
+
+    private void evictCacheEntry(Cache cache, String key, String reason) {
+        try {
+            cache.evict(key);
+        } catch (RuntimeException exception) {
+            log.warn("Redis cache EVICT failed for cache={} key={} after {}", cache.getName(), key, reason, exception);
+        }
     }
 
     private CatalogDtos.PagedMovieResponse normalizePaged(JsonNode raw, String fallbackField) {
@@ -269,7 +424,9 @@ public class PhimApiService {
                 readText(item, "type", null),
                 categories,
                 countries,
-                readInt(item, "tmdb.id", null)
+                readInt(item, "tmdb.id", null),
+                readText(item, "_id", null),
+                readText(item, "modified.time", null)
         );
     }
 
@@ -338,6 +495,128 @@ public class PhimApiService {
                 return delegate.next();
             }
         };
+    }
+
+    private List<String> normalizeBrowseTypes(List<String> types) {
+        Set<String> normalized = new LinkedHashSet<>();
+        for (String type : types == null ? List.<String>of() : types) {
+            if (type != null && DEFAULT_BROWSE_TYPES.contains(type)) {
+                normalized.add(type);
+            }
+        }
+        return normalized.isEmpty() ? DEFAULT_BROWSE_TYPES : List.copyOf(normalized);
+    }
+
+    private int parsePositiveInt(String value, int fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            int parsed = Integer.parseInt(value);
+            return parsed > 0 ? parsed : fallback;
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private int compareAggregateCandidates(
+            AggregateCandidate left,
+            AggregateCandidate right,
+            String sortField,
+            String sortType
+    ) {
+        boolean ascending = "asc".equalsIgnoreCase(sortType);
+        int compare = switch (sortField == null ? "" : sortField) {
+            case "year" -> compareNullableIntegers(left.item().year(), right.item().year(), ascending);
+            case "_id" -> compareNullableStrings(left.item().sourceId(), right.item().sourceId(), ascending);
+            default -> compareNullableStrings(left.item().modifiedTime(), right.item().modifiedTime(), ascending);
+        };
+
+        if (compare != 0) {
+            return compare;
+        }
+
+        compare = compareNullableStrings(left.item().modifiedTime(), right.item().modifiedTime(), false);
+        if (compare != 0) {
+            return compare;
+        }
+
+        compare = compareNullableStrings(left.item().sourceId(), right.item().sourceId(), false);
+        if (compare != 0) {
+            return compare;
+        }
+
+        compare = Integer.compare(left.typePriority(), right.typePriority());
+        if (compare != 0) {
+            return compare;
+        }
+
+        compare = Integer.compare(left.sourceIndex(), right.sourceIndex());
+        if (compare != 0) {
+            return compare;
+        }
+
+        return Comparator.nullsLast(String::compareToIgnoreCase)
+                .compare(left.item().name(), right.item().name());
+    }
+
+    private int compareNullableIntegers(Integer left, Integer right, boolean ascending) {
+        if (left == null && right == null) {
+            return 0;
+        }
+        if (left == null) {
+            return 1;
+        }
+        if (right == null) {
+            return -1;
+        }
+        return ascending ? Integer.compare(left, right) : Integer.compare(right, left);
+    }
+
+    private int compareNullableStrings(String left, String right, boolean ascending) {
+        if ((left == null || left.isBlank()) && (right == null || right.isBlank())) {
+            return 0;
+        }
+        if (left == null || left.isBlank()) {
+            return 1;
+        }
+        if (right == null || right.isBlank()) {
+            return -1;
+        }
+        return ascending ? left.compareToIgnoreCase(right) : right.compareToIgnoreCase(left);
+    }
+
+    private JsonNode buildAggregateRaw(
+            int page,
+            int totalPages,
+            int totalItems,
+            List<String> selectedTypes,
+            Map<String, String> params
+    ) {
+        var raw = JsonNodeFactory.instance.objectNode();
+        var dataNode = raw.putObject("data");
+        var paramsNode = dataNode.putObject("params");
+        var paginationNode = paramsNode.putObject("pagination");
+        paginationNode.put("currentPage", page);
+        paginationNode.put("totalPages", totalPages);
+        paginationNode.put("totalItems", totalItems);
+
+        params.forEach((key, value) -> {
+            if (value != null && !value.isBlank()) {
+                paramsNode.put(key, value);
+            }
+        });
+
+        var typesNode = dataNode.putArray("selectedTypes");
+        selectedTypes.forEach(typesNode::add);
+        return raw;
+    }
+
+    private record AggregateCandidate(
+            CatalogDtos.MovieSummary item,
+            int typePriority,
+            int sourceIndex
+    ) {
     }
 
 }

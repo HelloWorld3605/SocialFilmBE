@@ -21,7 +21,9 @@ public final class CatalogDtos {
             String type,
             List<String> categories,
             List<String> countries,
-            Integer tmdbId
+            Integer tmdbId,
+            String sourceId,
+            String modifiedTime
     ) {
     }
 
