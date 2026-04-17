@@ -20,7 +20,9 @@ public final class CatalogDtos {
             Integer year,
             String type,
             List<String> categories,
+            List<String> categorySlugs,
             List<String> countries,
+            List<String> countrySlugs,
             Integer tmdbId,
             String sourceId,
             String modifiedTime

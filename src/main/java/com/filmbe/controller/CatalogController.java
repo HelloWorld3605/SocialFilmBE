@@ -38,16 +38,23 @@ public class CatalogController {
             @RequestParam(required = false) java.util.List<String> type,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "24") Integer limit,
-            @RequestParam(defaultValue = "modified.time") String sortField,
-            @RequestParam(defaultValue = "desc") String sortType,
-            @RequestParam(required = false) String sortLang,
-            @RequestParam(required = false) String category,
-            @RequestParam(required = false) String country,
-            @RequestParam(required = false) String year
+            @RequestParam(name = "sort_field", defaultValue = "modified.time") String sortField,
+            @RequestParam(name = "sort_type", defaultValue = "desc") String sortType,
+            @RequestParam(name = "sort_lang", required = false) java.util.List<String> sortLang,
+            @RequestParam(required = false) java.util.List<String> category,
+            @RequestParam(required = false) java.util.List<String> country,
+            @RequestParam(required = false) java.util.List<String> year
     ) {
         return phimApiService.listAll(
                 type,
-                phimApiService.baseParams(page, limit, sortField, sortType, sortLang, category, country, year)
+                page,
+                limit,
+                sortField,
+                sortType,
+                sortLang,
+                category,
+                country,
+                year
         );
     }
 
@@ -56,9 +63,9 @@ public class CatalogController {
             @PathVariable String type,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "24") Integer limit,
-            @RequestParam(defaultValue = "modified.time") String sortField,
-            @RequestParam(defaultValue = "desc") String sortType,
-            @RequestParam(required = false) String sortLang,
+            @RequestParam(name = "sort_field", defaultValue = "modified.time") String sortField,
+            @RequestParam(name = "sort_type", defaultValue = "desc") String sortType,
+            @RequestParam(name = "sort_lang", required = false) String sortLang,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String country,
             @RequestParam(required = false) String year
@@ -71,16 +78,24 @@ public class CatalogController {
             @RequestParam String keyword,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "24") Integer limit,
-            @RequestParam(defaultValue = "modified.time") String sortField,
-            @RequestParam(defaultValue = "desc") String sortType,
-            @RequestParam(required = false) String sortLang,
-            @RequestParam(required = false) String category,
-            @RequestParam(required = false) String country,
-            @RequestParam(required = false) String year
+            @RequestParam(name = "sort_field", defaultValue = "modified.time") String sortField,
+            @RequestParam(name = "sort_type", defaultValue = "desc") String sortType,
+            @RequestParam(name = "sort_lang", required = false) java.util.List<String> sortLang,
+            @RequestParam(required = false) java.util.List<String> category,
+            @RequestParam(required = false) java.util.List<String> country,
+            @RequestParam(required = false) java.util.List<String> year
     ) {
-        Map<String, String> params = phimApiService.baseParams(page, limit, sortField, sortType, sortLang, category, country, year);
-        params.put("keyword", keyword);
-        return phimApiService.search(params);
+        return phimApiService.search(
+                keyword,
+                page,
+                limit,
+                sortField,
+                sortType,
+                sortLang,
+                category,
+                country,
+                year
+        );
     }
 
     @GetMapping("/catalog/categories")
@@ -98,9 +113,9 @@ public class CatalogController {
             @PathVariable String slug,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "24") Integer limit,
-            @RequestParam(defaultValue = "modified.time") String sortField,
-            @RequestParam(defaultValue = "desc") String sortType,
-            @RequestParam(required = false) String sortLang,
+            @RequestParam(name = "sort_field", defaultValue = "modified.time") String sortField,
+            @RequestParam(name = "sort_type", defaultValue = "desc") String sortType,
+            @RequestParam(name = "sort_lang", required = false) String sortLang,
             @RequestParam(required = false) String country,
             @RequestParam(required = false) String year
     ) {
@@ -112,9 +127,9 @@ public class CatalogController {
             @PathVariable String slug,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "24") Integer limit,
-            @RequestParam(defaultValue = "modified.time") String sortField,
-            @RequestParam(defaultValue = "desc") String sortType,
-            @RequestParam(required = false) String sortLang,
+            @RequestParam(name = "sort_field", defaultValue = "modified.time") String sortField,
+            @RequestParam(name = "sort_type", defaultValue = "desc") String sortType,
+            @RequestParam(name = "sort_lang", required = false) String sortLang,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String year
     ) {
@@ -126,9 +141,9 @@ public class CatalogController {
             @PathVariable String yearValue,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "24") Integer limit,
-            @RequestParam(defaultValue = "modified.time") String sortField,
-            @RequestParam(defaultValue = "desc") String sortType,
-            @RequestParam(required = false) String sortLang,
+            @RequestParam(name = "sort_field", defaultValue = "modified.time") String sortField,
+            @RequestParam(name = "sort_type", defaultValue = "desc") String sortType,
+            @RequestParam(name = "sort_lang", required = false) String sortLang,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String country
     ) {
