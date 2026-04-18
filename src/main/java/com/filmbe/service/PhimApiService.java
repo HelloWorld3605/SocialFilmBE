@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -45,7 +46,6 @@ public class PhimApiService {
             "hoat-hinh"
     );
     private static final int MAX_AGGREGATE_SOURCE_PAGE_SIZE = 64;
-    private static final int MAX_AGGREGATE_SOURCE_PAGES_PER_TYPE = 4;
     private static final RedisSerializer<String> STRING_SERIALIZER = RedisSerializer.string();
 
     private final AppProperties appProperties;
@@ -99,7 +99,7 @@ public class PhimApiService {
 
     @Cacheable(
             cacheNames = RedisCacheConfig.CATALOG_LIST_CACHE,
-            key = "T(com.filmbe.config.CacheKeys).parts('all', #types, #page, #limit, #sortField, #sortType, #sortLang, #category, #country, #year)",
+            key = "T(com.filmbe.config.CacheKeys).parts('all-v2', #types, #page, #limit, #sortField, #sortType, #sortLang, #category, #country, #year)",
             sync = true
     )
     public CatalogDtos.PagedMovieResponse listAll(
@@ -134,7 +134,7 @@ public class PhimApiService {
 
     @Cacheable(
             cacheNames = RedisCacheConfig.CATALOG_SEARCH_CACHE,
-            key = "T(com.filmbe.config.CacheKeys).parts(#keyword, #page, #limit, #sortField, #sortType, #sortLang, #category, #country, #year)",
+            key = "T(com.filmbe.config.CacheKeys).parts('search-v2', #keyword, #page, #limit, #sortField, #sortType, #sortLang, #category, #country, #year)",
             sync = true
     )
     public CatalogDtos.PagedMovieResponse search(
@@ -201,8 +201,18 @@ public class PhimApiService {
             sync = true
     )
     public CatalogDtos.PagedMovieResponse countryDetail(String slug, Map<String, String> params) {
-        JsonNode raw = get("/v1/api/quoc-gia/" + slug, params);
-        return normalizePaged(raw, "items");
+        try {
+            JsonNode raw = get("/v1/api/quoc-gia/" + slug, params);
+            return normalizePaged(raw, "items");
+        } catch (RestClientException exception) {
+            log.warn(
+                    "Country detail upstream failed for slug={} params={}, falling back to aggregate browse lists: {}",
+                    slug,
+                    params,
+                    exception.getMessage()
+            );
+            return countryDetailFallback(slug, params);
+        }
     }
 
     @Cacheable(
@@ -264,6 +274,24 @@ public class PhimApiService {
         return params;
     }
 
+    private CatalogDtos.PagedMovieResponse countryDetailFallback(String slug, Map<String, String> params) {
+        Map<String, String> sourceParams = new LinkedHashMap<>();
+        sourceParams.put("sort_field", params.get("sort_field"));
+        sourceParams.put("sort_type", params.get("sort_type"));
+
+        Map<String, String> responseParams = new LinkedHashMap<>(params);
+        responseParams.put("country", slug);
+
+        FilterSelections filterSelections = normalizeFilterSelections(
+                singleFilterValue(params.get("sort_lang")),
+                singleFilterValue(params.get("category")),
+                List.of(slug),
+                singleFilterValue(params.get("year"))
+        );
+
+        return listAllWithLocalFilters(DEFAULT_BROWSE_TYPES, sourceParams, responseParams, filterSelections);
+    }
+
     private CatalogDtos.PagedMovieResponse listAllWithUpstreamFilters(List<String> types, Map<String, String> params) {
         List<String> normalizedTypes = normalizeBrowseTypes(types);
         if (normalizedTypes.size() == 1) {
@@ -309,6 +337,10 @@ public class PhimApiService {
                             )
                     );
                 }
+
+                if (isLastSourcePage(response, sourcePage)) {
+                    break;
+                }
             }
         }
 
@@ -337,24 +369,33 @@ public class PhimApiService {
             Map<String, String> params,
             FilterSelections filterSelections
     ) {
+        return listAllWithLocalFilters(types, params, params, filterSelections);
+    }
+
+    private CatalogDtos.PagedMovieResponse listAllWithLocalFilters(
+            List<String> types,
+            Map<String, String> sourceParams,
+            Map<String, String> responseParams,
+            FilterSelections filterSelections
+    ) {
         List<String> normalizedTypes = normalizeBrowseTypes(types);
-        AggregatePaging aggregatePaging = resolveAggregatePaging(params);
+        AggregatePaging aggregatePaging = resolveAggregatePaging(responseParams);
         int page = aggregatePaging.page();
         int limit = aggregatePaging.limit();
-        String sortField = params.getOrDefault("sort_field", "modified.time");
-        String sortType = params.getOrDefault("sort_type", "desc");
+        String sortField = responseParams.getOrDefault("sort_field", "modified.time");
+        String sortType = responseParams.getOrDefault("sort_type", "desc");
 
         Map<String, AggregateCandidate> ranked = new LinkedHashMap<>();
 
         for (int typeIndex = 0; typeIndex < normalizedTypes.size(); typeIndex++) {
             String type = normalizedTypes.get(typeIndex);
 
-            for (int sourcePage = 1; sourcePage <= MAX_AGGREGATE_SOURCE_PAGES_PER_TYPE; sourcePage++) {
-                Map<String, String> sourceParams = new LinkedHashMap<>(params);
-                sourceParams.put("page", String.valueOf(sourcePage));
-                sourceParams.put("limit", String.valueOf(MAX_AGGREGATE_SOURCE_PAGE_SIZE));
+            for (int sourcePage = 1; ; sourcePage++) {
+                Map<String, String> requestParams = new LinkedHashMap<>(sourceParams);
+                requestParams.put("page", String.valueOf(sourcePage));
+                requestParams.put("limit", String.valueOf(MAX_AGGREGATE_SOURCE_PAGE_SIZE));
 
-                CatalogDtos.PagedMovieResponse response = list(type, sourceParams);
+                CatalogDtos.PagedMovieResponse response = list(type, requestParams);
                 List<CatalogDtos.MovieSummary> items = response.items();
                 for (int itemIndex = 0; itemIndex < items.size(); itemIndex++) {
                     CatalogDtos.MovieSummary item = items.get(itemIndex);
@@ -372,7 +413,7 @@ public class PhimApiService {
                     );
                 }
 
-                if (response.totalPages() != null && sourcePage >= response.totalPages()) {
+                if (isLastSourcePage(response, sourcePage)) {
                     break;
                 }
             }
@@ -395,7 +436,7 @@ public class PhimApiService {
                 totalPages,
                 totalItems,
                 pageItems,
-                buildAggregateRaw(page, totalPages, totalItems, normalizedTypes, params)
+                buildAggregateRaw(page, totalPages, totalItems, normalizedTypes, responseParams)
         );
     }
 
@@ -411,7 +452,7 @@ public class PhimApiService {
 
         List<AggregateCandidate> matched = new ArrayList<>();
 
-        for (int sourcePage = 1; sourcePage <= MAX_AGGREGATE_SOURCE_PAGES_PER_TYPE; sourcePage++) {
+        for (int sourcePage = 1; ; sourcePage++) {
             Map<String, String> sourceParams = new LinkedHashMap<>(params);
             sourceParams.put("page", String.valueOf(sourcePage));
             sourceParams.put("limit", String.valueOf(MAX_AGGREGATE_SOURCE_PAGE_SIZE));
@@ -432,7 +473,7 @@ public class PhimApiService {
                 ));
             }
 
-            if (response.totalPages() != null && sourcePage >= response.totalPages()) {
+            if (isLastSourcePage(response, sourcePage)) {
                 break;
             }
         }
@@ -458,19 +499,19 @@ public class PhimApiService {
     }
 
     private AggregatePaging resolveAggregatePaging(Map<String, String> params) {
-        int requestedPage = parsePositiveInt(params.get("page"), 1);
+        int page = parsePositiveInt(params.get("page"), 1);
         int limit = Math.min(parsePositiveInt(params.get("limit"), 24), MAX_AGGREGATE_SOURCE_PAGE_SIZE);
-        int maxSupportedPage = Math.max(
-                1,
-                (MAX_AGGREGATE_SOURCE_PAGE_SIZE * MAX_AGGREGATE_SOURCE_PAGES_PER_TYPE) / Math.max(1, limit)
-        );
-        int page = Math.min(requestedPage, maxSupportedPage);
         int targetItemCount = page * limit;
-        int pagesToFetch = Math.min(
-                MAX_AGGREGATE_SOURCE_PAGES_PER_TYPE,
-                Math.max(1, (int) Math.ceil((double) targetItemCount / MAX_AGGREGATE_SOURCE_PAGE_SIZE))
-        );
+        int pagesToFetch = Math.max(1, (int) Math.ceil((double) targetItemCount / MAX_AGGREGATE_SOURCE_PAGE_SIZE));
         return new AggregatePaging(page, limit, pagesToFetch);
+    }
+
+    private boolean isLastSourcePage(CatalogDtos.PagedMovieResponse response, int sourcePage) {
+        Integer totalPages = response.totalPages();
+        if (totalPages != null) {
+            return sourcePage >= totalPages;
+        }
+        return response.items().isEmpty();
     }
 
     private FilterSelections normalizeFilterSelections(
@@ -508,6 +549,10 @@ public class PhimApiService {
 
     private String singleValueOrNull(List<String> values) {
         return values != null && values.size() == 1 ? values.getFirst() : null;
+    }
+
+    private List<String> singleFilterValue(String value) {
+        return value == null || value.isBlank() ? List.of() : List.of(value);
     }
 
     private boolean matchesFilterSelections(CatalogDtos.MovieSummary item, FilterSelections filterSelections) {

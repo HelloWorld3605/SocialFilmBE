@@ -58,5 +58,7 @@ public interface WishlistItemRepository extends JpaRepository<WishlistItem, Long
             """)
     List<MovieCountProjection> findTopMovieCounts(Pageable pageable);
 
+    long deleteByUserId(Long userId);
+
     void deleteByUserIdAndMovieSlug(Long userId, String movieSlug);
 }

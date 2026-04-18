@@ -63,6 +63,11 @@ public class AdminController {
         return adminService.updateUser(authentication.getName(), userId, request);
     }
 
+    @DeleteMapping("/users/{userId}")
+    public AdminDtos.ActionResponse deleteUser(Authentication authentication, @PathVariable Long userId) {
+        return adminService.deleteUser(authentication.getName(), userId);
+    }
+
     @DeleteMapping("/pending-registrations/{pendingRegistrationId}")
     public AdminDtos.ActionResponse resetPendingRegistration(@PathVariable Long pendingRegistrationId) {
         return adminService.resetPendingRegistration(pendingRegistrationId);

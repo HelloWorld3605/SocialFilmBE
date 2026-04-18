@@ -67,5 +67,7 @@ public interface WatchHistoryRepository extends JpaRepository<WatchHistory, Long
             """)
     List<MovieCountProjection> findTopMovieCounts(Pageable pageable);
 
+    long deleteByUserId(Long userId);
+
     long deleteByIdAndUserId(Long id, Long userId);
 }

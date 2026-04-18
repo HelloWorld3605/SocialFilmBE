@@ -188,6 +188,28 @@ public class AdminService {
         return getUser(user.getId());
     }
 
+    @Transactional
+    public AdminDtos.ActionResponse deleteUser(String actorEmail, Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("Không tìm thấy người dùng."));
+
+        if (user.getEmail().equalsIgnoreCase(actorEmail)) {
+            throw new IllegalArgumentException("Không thể tự xóa tài khoản admin đang đăng nhập.");
+        }
+
+        if (user.getRole() == Role.ADMIN && userRepository.countByRole(Role.ADMIN) <= 1) {
+            throw new IllegalArgumentException("Không thể xóa admin cuối cùng của hệ thống.");
+        }
+
+        wishlistItemRepository.deleteByUserId(userId);
+        watchHistoryRepository.deleteByUserId(userId);
+        userRepository.delete(user);
+
+        return new AdminDtos.ActionResponse(
+                "Đã xóa người dùng " + user.getFullName() + " và toàn bộ dữ liệu gắn với tài khoản này."
+        );
+    }
+
     @Transactional(readOnly = true)
     public AdminDtos.PendingRegistrationListResponse listPendingRegistrations(
             int page,
