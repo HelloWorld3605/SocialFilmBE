@@ -1,4 +1,4 @@
-package com.filmbe.service;
+package com.filmbe.service.cloudinary;
 
 import com.filmbe.model.FileResource;
 import com.filmbe.repository.FileResourceRepository;

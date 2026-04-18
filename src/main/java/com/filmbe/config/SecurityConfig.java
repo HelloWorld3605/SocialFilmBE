@@ -39,9 +39,15 @@ public class SecurityConfig {
                                 HttpMethod.POST,
                                 "/api/auth/login",
                                 "/api/auth/start-registration",
-                                "/api/auth/complete-registration"
+                                "/api/auth/complete-registration",
+                                "/api/auth/forgot-password",
+                                "/api/auth/reset-password"
                         ).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/auth/validate-token/**").permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/auth/validate-token/**",
+                                "/api/auth/reset-password/validate/**"
+                        ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/catalog/**", "/api/movies/**", "/api/tmdb/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/error").permitAll()

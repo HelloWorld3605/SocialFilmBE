@@ -35,10 +35,34 @@ public final class AuthDtos {
     ) {
     }
 
+    public record ForgotPasswordRequest(
+            @NotBlank @Email @Size(max = 160) String email
+    ) {
+    }
+
+    public record ResetPasswordRequest(
+            @NotBlank String resetToken,
+            @NotBlank
+            @Size(min = 6, max = 120)
+            @Pattern(
+                    regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{6,}$",
+                    message = "Mật khẩu phải có ít nhất 6 ký tự, gồm chữ hoa, chữ thường và số."
+            )
+            String password
+    ) {
+    }
+
     public record MessageResponse(String message, String debugVerificationUrl) {
     }
 
     public record TokenValidationResponse(
+            boolean valid,
+            String email,
+            Instant expiresAt
+    ) {
+    }
+
+    public record PasswordResetTokenValidationResponse(
             boolean valid,
             String email,
             Instant expiresAt

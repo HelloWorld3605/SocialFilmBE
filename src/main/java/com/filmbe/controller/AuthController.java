@@ -38,6 +38,27 @@ public class AuthController {
         return authService.completeRegistration(request);
     }
 
+    @PostMapping("/forgot-password")
+    public AuthDtos.MessageResponse forgotPassword(
+            @Valid @RequestBody AuthDtos.ForgotPasswordRequest request
+    ) {
+        return authService.forgotPassword(request);
+    }
+
+    @GetMapping("/reset-password/validate/{token}")
+    public AuthDtos.PasswordResetTokenValidationResponse validatePasswordResetToken(
+            @PathVariable String token
+    ) {
+        return authService.validatePasswordResetToken(token);
+    }
+
+    @PostMapping("/reset-password")
+    public AuthDtos.MessageResponse resetPassword(
+            @Valid @RequestBody AuthDtos.ResetPasswordRequest request
+    ) {
+        return authService.resetPassword(request);
+    }
+
     @PostMapping("/login")
     public AuthDtos.AuthResponse login(@Valid @RequestBody AuthDtos.LoginRequest request) {
         return authService.login(request);

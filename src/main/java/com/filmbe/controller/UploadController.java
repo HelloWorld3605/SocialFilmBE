@@ -1,7 +1,7 @@
 package com.filmbe.controller;
 
 import com.filmbe.dto.AuthDtos;
-import com.filmbe.service.UploadService;
+import com.filmbe.service.cloudinary.UploadService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
