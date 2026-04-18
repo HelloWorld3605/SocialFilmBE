@@ -2,6 +2,8 @@ package com.filmbe.dto;
 
 import com.filmbe.enums.Role;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -116,6 +118,40 @@ public final class AdminDtos {
     }
 
     public record ActionResponse(String message) {
+    }
+
+    public record AuthPageImageItem(
+            Long id,
+            String imageUrl,
+            String title,
+            String description,
+            Integer focalPointX,
+            Integer focalPointY,
+            Instant createdAt
+    ) {
+    }
+
+    public record AuthPageImageListResponse(
+            List<AuthPageImageItem> items
+    ) {
+    }
+
+    public record CreateAuthPageImageRequest(
+            @NotBlank @Size(max = 1000) String imageUrl,
+            @Size(max = 120) String title,
+            @Size(max = 320) String description,
+            @Min(0) @Max(100) Integer focalPointX,
+            @Min(0) @Max(100) Integer focalPointY
+    ) {
+    }
+
+    public record UpdateAuthPageImageRequest(
+            @NotBlank @Size(max = 1000) String imageUrl,
+            @Size(max = 120) String title,
+            @Size(max = 320) String description,
+            @Min(0) @Max(100) Integer focalPointX,
+            @Min(0) @Max(100) Integer focalPointY
+    ) {
     }
 
     public record ResetPendingRegistrationRequest(

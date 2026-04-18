@@ -1,6 +1,7 @@
 package com.filmbe.controller;
 
 import com.filmbe.dto.CatalogDtos;
+import com.filmbe.service.AuthPageImageService;
 import com.filmbe.service.PhimApiService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +20,7 @@ import java.util.Map;
 public class CatalogController {
 
     private final PhimApiService phimApiService;
+    private final AuthPageImageService authPageImageService;
 
     @GetMapping("/catalog/home")
     public CatalogDtos.HomeResponse home() {
@@ -106,6 +108,11 @@ public class CatalogController {
     @GetMapping("/catalog/countries")
     public JsonNode countries() {
         return phimApiService.countries();
+    }
+
+    @GetMapping("/catalog/auth-images")
+    public CatalogDtos.AuthPageImageListResponse authImages() {
+        return authPageImageService.listPublic();
     }
 
     @GetMapping("/catalog/category/{slug}")

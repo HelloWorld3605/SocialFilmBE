@@ -1,8 +1,10 @@
 package com.filmbe.dto;
 
+import tools.jackson.databind.JsonNode;
+
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import tools.jackson.databind.JsonNode;
 
 public final class CatalogDtos {
     private CatalogDtos() {
@@ -44,6 +46,22 @@ public final class CatalogDtos {
             List<MovieSummary> single,
             List<MovieSummary> animation,
             List<MovieSummary> tvShows
+    ) {
+    }
+
+    public record AuthPageImageItem(
+            Long id,
+            String imageUrl,
+            String title,
+            String description,
+            Integer focalPointX,
+            Integer focalPointY,
+            Instant createdAt
+    ) {
+    }
+
+    public record AuthPageImageListResponse(
+            List<AuthPageImageItem> items
     ) {
     }
 
