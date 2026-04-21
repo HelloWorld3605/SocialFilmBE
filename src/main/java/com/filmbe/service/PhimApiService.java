@@ -774,7 +774,13 @@ public class PhimApiService {
         }
 
         JsonNode dataNode = raw.has("data") ? raw.path("data") : raw;
-        JsonNode paginationNode = navigate(dataNode, "params.pagination");
+        JsonNode paginationNode = firstPresentNode(
+                navigate(dataNode, "params.pagination"),
+                navigate(dataNode, "pagination"),
+                navigate(raw, "params.pagination"),
+                navigate(raw, "pagination"),
+                navigate(raw, "meta.pagination")
+        );
         JsonNode itemsNode = dataNode.path("items");
         if (!itemsNode.isArray()) {
             itemsNode = dataNode.path(fallbackField);
@@ -805,6 +811,15 @@ public class PhimApiService {
         );
 
         return new CatalogDtos.PagedMovieResponse(page, totalPages, totalItems, items, raw);
+    }
+
+    private JsonNode firstPresentNode(JsonNode... candidates) {
+        for (JsonNode candidate : candidates) {
+            if (candidate != null && !candidate.isMissingNode() && !candidate.isNull()) {
+                return candidate;
+            }
+        }
+        return JsonNodeFactory.instance.objectNode();
     }
 
     private List<CatalogDtos.MovieSummary> safeHomeSection(String section, SupplierWithException<List<CatalogDtos.MovieSummary>> supplier) {

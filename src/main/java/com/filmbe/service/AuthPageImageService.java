@@ -20,7 +20,7 @@ public class AuthPageImageService {
     @Transactional(readOnly = true)
     public AdminDtos.AuthPageImageListResponse listAdmin() {
         return new AdminDtos.AuthPageImageListResponse(
-                authPageImageRepository.findAllByOrderByCreatedAtDescIdDesc()
+                authPageImageRepository.findAllByOrderByDisplayOrderAscCreatedAtDescIdDesc()
                         .stream()
                         .map(this::toAdminItem)
                         .toList()
@@ -30,7 +30,7 @@ public class AuthPageImageService {
     @Transactional(readOnly = true)
     public CatalogDtos.AuthPageImageListResponse listPublic() {
         return new CatalogDtos.AuthPageImageListResponse(
-                authPageImageRepository.findAllByOrderByCreatedAtDescIdDesc()
+                authPageImageRepository.findAllByOrderByDisplayOrderAscCreatedAtDescIdDesc()
                         .stream()
                         .map(this::toCatalogItem)
                         .toList()
@@ -45,8 +45,10 @@ public class AuthPageImageService {
                 request.imageUrl(),
                 request.title(),
                 request.description(),
+                request.displayOrder(),
                 request.focalPointX(),
-                request.focalPointY()
+                request.focalPointY(),
+                resolveCreateDisplayOrder(request.displayOrder())
         );
         return toAdminItem(authPageImageRepository.save(image));
     }
@@ -61,8 +63,10 @@ public class AuthPageImageService {
                 request.imageUrl(),
                 request.title(),
                 request.description(),
+                request.displayOrder(),
                 request.focalPointX(),
-                request.focalPointY()
+                request.focalPointY(),
+                currentDisplayOrder(image)
         );
 
         return toAdminItem(authPageImageRepository.save(image));
@@ -84,6 +88,7 @@ public class AuthPageImageService {
                 image.getImageUrl(),
                 image.getTitle(),
                 image.getDescription(),
+                image.getDisplayOrder(),
                 image.getFocalPointX(),
                 image.getFocalPointY(),
                 image.getCreatedAt()
@@ -96,6 +101,7 @@ public class AuthPageImageService {
                 image.getImageUrl(),
                 image.getTitle(),
                 image.getDescription(),
+                image.getDisplayOrder(),
                 image.getFocalPointX(),
                 image.getFocalPointY(),
                 image.getCreatedAt()
@@ -111,14 +117,42 @@ public class AuthPageImageService {
             String imageUrl,
             String title,
             String description,
+            Integer displayOrder,
             Integer focalPointX,
-            Integer focalPointY
+            Integer focalPointY,
+            int fallbackDisplayOrder
     ) {
         image.setImageUrl(imageUrl.trim());
         image.setTitle(blankToNull(title));
         image.setDescription(blankToNull(description));
+        image.setDisplayOrder(normalizeDisplayOrder(displayOrder, fallbackDisplayOrder));
         image.setFocalPointX(normalizePosition(focalPointX));
         image.setFocalPointY(normalizePosition(focalPointY));
+    }
+
+    private int currentDisplayOrder(AuthPageImage image) {
+        Integer displayOrder = image.getDisplayOrder();
+        return displayOrder == null ? 1 : Math.max(1, displayOrder);
+    }
+
+    private int nextDisplayOrder() {
+        return authPageImageRepository.findFirstByOrderByDisplayOrderDescIdDesc()
+                .map(this::currentDisplayOrder)
+                .orElse(0) + 1;
+    }
+
+    private int resolveCreateDisplayOrder(Integer requestedDisplayOrder) {
+        if (requestedDisplayOrder != null) {
+            return requestedDisplayOrder;
+        }
+        return nextDisplayOrder();
+    }
+
+    private Integer normalizeDisplayOrder(Integer value, int fallbackValue) {
+        if (value == null) {
+            return Math.max(1, fallbackValue);
+        }
+        return Math.max(1, value);
     }
 
     private Integer normalizePosition(Integer value) {

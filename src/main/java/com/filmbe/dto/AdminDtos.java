@@ -125,6 +125,7 @@ public final class AdminDtos {
             String imageUrl,
             String title,
             String description,
+            Integer displayOrder,
             Integer focalPointX,
             Integer focalPointY,
             Instant createdAt
@@ -140,6 +141,7 @@ public final class AdminDtos {
             @NotBlank @Size(max = 1000) String imageUrl,
             @Size(max = 120) String title,
             @Size(max = 320) String description,
+            @Min(1) @Max(9999) Integer displayOrder,
             @Min(0) @Max(100) Integer focalPointX,
             @Min(0) @Max(100) Integer focalPointY
     ) {
@@ -149,6 +151,7 @@ public final class AdminDtos {
             @NotBlank @Size(max = 1000) String imageUrl,
             @Size(max = 120) String title,
             @Size(max = 320) String description,
+            @Min(1) @Max(9999) Integer displayOrder,
             @Min(0) @Max(100) Integer focalPointX,
             @Min(0) @Max(100) Integer focalPointY
     ) {

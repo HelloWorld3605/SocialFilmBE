@@ -31,6 +31,9 @@ public class AuthPageImage {
     @Column(length = 320)
     private String description;
 
+    @Column(name = "display_order", nullable = false)
+    private Integer displayOrder = 1;
+
     @Column(name = "focal_point_x", nullable = false)
     private Integer focalPointX = 50;
 

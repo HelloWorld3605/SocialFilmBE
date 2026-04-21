@@ -54,6 +54,7 @@ public final class CatalogDtos {
             String imageUrl,
             String title,
             String description,
+            Integer displayOrder,
             Integer focalPointX,
             Integer focalPointY,
             Instant createdAt
