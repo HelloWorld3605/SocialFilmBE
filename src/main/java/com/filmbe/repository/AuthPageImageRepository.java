@@ -10,4 +10,8 @@ public interface AuthPageImageRepository extends JpaRepository<AuthPageImage, Lo
     List<AuthPageImage> findAllByOrderByDisplayOrderAscCreatedAtDescIdDesc();
 
     Optional<AuthPageImage> findFirstByOrderByDisplayOrderDescIdDesc();
+
+    boolean existsByDisplayOrder(Integer displayOrder);
+
+    boolean existsByDisplayOrderAndIdNot(Integer displayOrder, Long id);
 }

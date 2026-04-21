@@ -9,7 +9,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +43,8 @@ public class AuthPageImageService {
 
     @Transactional
     public AdminDtos.AuthPageImageItem create(AdminDtos.CreateAuthPageImageRequest request) {
+        validateRequestedDisplayOrder(request.displayOrder(), null);
+
         AuthPageImage image = new AuthPageImage();
         applyValues(
                 image,
@@ -58,6 +64,8 @@ public class AuthPageImageService {
         AuthPageImage image = authPageImageRepository.findById(imageId)
                 .orElseThrow(() -> new EntityNotFoundException("Không tìm thấy ảnh auth page."));
 
+        validateRequestedDisplayOrder(request.displayOrder(), imageId);
+
         applyValues(
                 image,
                 request.imageUrl(),
@@ -70,6 +78,26 @@ public class AuthPageImageService {
         );
 
         return toAdminItem(authPageImageRepository.save(image));
+    }
+
+    @Transactional
+    public AdminDtos.ActionResponse reorder(AdminDtos.ReorderAuthPageImagesRequest request) {
+        List<AuthPageImage> images = authPageImageRepository.findAllByOrderByDisplayOrderAscCreatedAtDescIdDesc();
+        validateReorderRequest(images, request.imageIds());
+
+        Map<Long, AuthPageImage> imagesById = new HashMap<>();
+        for (AuthPageImage image : images) {
+            imagesById.put(image.getId(), image);
+        }
+
+        for (int index = 0; index < request.imageIds().size(); index++) {
+            Long imageId = request.imageIds().get(index);
+            imagesById.get(imageId).setDisplayOrder(index + 1);
+        }
+
+        authPageImageRepository.saveAll(images);
+
+        return new AdminDtos.ActionResponse("Đã cập nhật thứ tự ảnh auth page.");
     }
 
     @Transactional
@@ -146,6 +174,44 @@ public class AuthPageImageService {
             return requestedDisplayOrder;
         }
         return nextDisplayOrder();
+    }
+
+    private void validateRequestedDisplayOrder(Integer requestedDisplayOrder, Long currentImageId) {
+        if (requestedDisplayOrder == null) {
+            return;
+        }
+
+        boolean duplicated = currentImageId == null
+                ? authPageImageRepository.existsByDisplayOrder(requestedDisplayOrder)
+                : authPageImageRepository.existsByDisplayOrderAndIdNot(requestedDisplayOrder, currentImageId);
+
+        if (duplicated) {
+            throw new IllegalArgumentException(
+                    "Số thứ tự này đã được dùng cho ảnh khác. Hãy dùng popup sắp xếp để đổi vị trí."
+            );
+        }
+    }
+
+    private void validateReorderRequest(List<AuthPageImage> currentImages, List<Long> requestedImageIds) {
+        Set<Long> uniqueRequestedIds = new HashSet<>();
+        for (Long requestedImageId : requestedImageIds) {
+            if (!uniqueRequestedIds.add(requestedImageId)) {
+                throw new IllegalArgumentException("Danh sách sắp xếp có ảnh bị lặp. Hãy kéo thả lại.");
+            }
+        }
+
+        if (currentImages.size() != requestedImageIds.size()) {
+            throw new IllegalArgumentException("Danh sách sắp xếp không khớp với bộ ảnh hiện tại.");
+        }
+
+        Set<Long> currentImageIds = new HashSet<>();
+        for (AuthPageImage image : currentImages) {
+            currentImageIds.add(image.getId());
+        }
+
+        if (!currentImageIds.equals(uniqueRequestedIds)) {
+            throw new IllegalArgumentException("Danh sách sắp xếp không khớp với bộ ảnh hiện tại.");
+        }
     }
 
     private Integer normalizeDisplayOrder(Integer value, int fallbackValue) {

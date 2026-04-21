@@ -91,6 +91,13 @@ public class AdminController {
         return authPageImageService.update(imageId, request);
     }
 
+    @PutMapping("/auth-images/reorder")
+    public AdminDtos.ActionResponse reorderAuthImages(
+            @Valid @RequestBody AdminDtos.ReorderAuthPageImagesRequest request
+    ) {
+        return authPageImageService.reorder(request);
+    }
+
     @DeleteMapping("/auth-images/{imageId}")
     public AdminDtos.ActionResponse deleteAuthImage(@PathVariable Long imageId) {
         return authPageImageService.delete(imageId);
